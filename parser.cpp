@@ -1,5 +1,6 @@
 #include <cassert>
 #include "parser.h"
+#include "ast.h"
 
 // TODO handle EOS
 
@@ -13,7 +14,7 @@ bool Parser::hasNext() {
     return nextToken.kind != Token::Kind::End;
 }
 
-std::unique_ptr<Statement> Parser::nextStatement() {
+std::unique_ptr<ast::Statement> Parser::nextStatement() {
     assert(hasNext());
     assert(nextToken.kind != Token::Kind::Comment);
     return statement();
@@ -26,7 +27,7 @@ void Parser::consumeToken() {
     }
 }
 
-std::unique_ptr<Statement> Parser::statement() {
+std::unique_ptr<ast::Statement> Parser::statement() {
     // TODO others
     // assignments
     auto to = assignableTo();
@@ -35,33 +36,33 @@ std::unique_ptr<Statement> Parser::statement() {
     auto from = expression();
 
     if (assignOp.kind == Token::Kind::Eq) {
-        return std::make_unique<AssignStrong>(std::move(to), std::move(from));
+        return std::make_unique<ast::AssignStrong>(std::move(to), std::move(from));
     } else if (assignOp.kind == Token::Kind::TildEq) {
-        return std::make_unique<AssignWeak>(std::move(to), std::move(from));
+        return std::make_unique<ast::AssignWeak>(std::move(to), std::move(from));
     } else {
         assert(false); // TODO
         return nullptr;
     }
 }
 
-std::unique_ptr<AssignableTo> Parser::assignableTo() {
+std::unique_ptr<ast::AssignableTo> Parser::assignableTo() {
     assert(nextToken.kind == Token::Kind::Ident);
-    std::unique_ptr<AssignableTo> assignableTo = std::make_unique<Var>(std::string(nextToken.range));
+    std::unique_ptr<ast::AssignableTo> assignableTo = std::make_unique<ast::Var>(std::string(nextToken.range));
     consumeToken();
     while (nextToken.kind == Token::Kind::Dot) {
         consumeToken();
         assert(nextToken.kind == Token::Kind::Ident);
-        assignableTo = std::make_unique<SelectField>(std::move(assignableTo), std::string(nextToken.range)); // FIXME why all these std::move?
+        assignableTo = std::make_unique<ast::SelectField>(std::move(assignableTo), std::string(nextToken.range)); // FIXME why all these std::move?
         consumeToken();
     }
 
     return assignableTo;
 }
 
-std::unique_ptr<Expression> Parser::expression() {
+std::unique_ptr<ast::Expression> Parser::expression() {
     if (nextToken.kind == Token::Kind::Object) {
         consumeToken();
-        return std::make_unique<NewObject>();
+        return std::make_unique<ast::NewObject>();
     }
     return assignableTo();
 }

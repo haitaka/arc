@@ -6,7 +6,7 @@
 #include <sstream>
 
 #include "parser.h"
-#include "ir.h"
+#include "ast.h"
 #include "interpreter.h"
 #include "preparation.h"
 
@@ -26,7 +26,7 @@ int main(int argc, char ** argv) {
     auto prog = getFileContent(filename);
 
     Parser parser(prog.c_str());
-    std::vector<std::unique_ptr<Statement>> statements;
+    std::vector<std::unique_ptr<ast::Statement>> statements;
     while (parser.hasNext()) {
         statements.push_back(parser.nextStatement());
     }

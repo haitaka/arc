@@ -1,7 +1,8 @@
 #include <cassert>
 #include "interpreter.h"
+#include "ast.h"
 
-Interpreter::Interpreter(std::vector<std::unique_ptr<Statement>> const & prog) : prog(prog) {}
+Interpreter::Interpreter(std::vector<std::unique_ptr<ast::Statement>> const & prog) : prog(prog) {}
 
 void Interpreter::interpret() {
     for (auto & elem: prog) {
@@ -13,30 +14,25 @@ void Interpreter::interpret() {
     }
 }
 
-void Interpreter::visitAssignStrong(AssignStrong & assignStrong) {
+void Interpreter::visitAssignStrong(ast::AssignStrong & assignStrong) {
     auto evaluator = Evaluator(*this);
     auto obj = evaluator.evaluate(*assignStrong.from);
 
     auto scopeResolver = TargetResolver(*this);
-    auto scopeAndName = scopeResolver.resolveScopeAndName(*assignStrong.to);
-    auto & scope = *scopeAndName.first;
-    auto & name = *scopeAndName.second;
-    // FIXME what address change on about rehash?
-    scope.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(obj, true)); // FIXME ?
+    auto var = scopeResolver.resolveVar(*assignStrong.to);
+    var->putStrong(obj); // FIXME obj got dead by this point
 }
 
-void Interpreter::visitAssignWeak(AssignWeak & assignWeak) { // TODO generalize
+void Interpreter::visitAssignWeak(ast::AssignWeak & assignWeak) { // TODO generalize
     auto evaluator = Evaluator(*this);
     auto obj = evaluator.evaluate(*assignWeak.from);
 
     auto scopeResolver = TargetResolver(*this);
-    auto scopeAndName = scopeResolver.resolveScopeAndName(*assignWeak.to);
-    auto & scope = *scopeAndName.first;
-    auto & name = *scopeAndName.second;
-    scope.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(obj, false)); // FIXME ?
+    auto var = scopeResolver.resolveVar(*assignWeak.to);
+    var->putWeak(obj);
 }
 
-void Interpreter::visitEndOfLife(EndOfLife & endOfLife) {
+void Interpreter::visitEndOfLife(ast::EndOfLife & endOfLife) {
     // TODO assert no uses after
     globals.erase(endOfLife.varName);
 }
@@ -47,55 +43,51 @@ Interpreter::~Interpreter() {
     std::clog << "=====================================================================" << std::endl;
 }
 
-Interpreter::TargetResolver::TargetResolver(Interpreter & interp)
+TargetResolver::TargetResolver(Interpreter & interp)
         : interp(interp)
-        , scope(nullptr)
-        , name(nullptr) {}
+        , targetVar(nullptr) {}
 
-std::pair<Scope *, std::string *> Interpreter::TargetResolver::resolveScopeAndName(AssignableTo & assignableTo) {
-    assert(scope == nullptr);
-    assert(name == nullptr);
+Var * TargetResolver::resolveVar(ast::AssignableTo & assignableTo) {
+    assert(targetVar == nullptr);
     assignableTo.accept(*this);
-    assert(scope != nullptr);
-    assert(name != nullptr);
-    return std::make_pair(scope, name);
+    assert(targetVar != nullptr);
+    return targetVar;
 }
 
-void Interpreter::TargetResolver::visitVar(Var & var) {
-    scope = &interp.globals;
-    name = &var.name;
+void TargetResolver::visitVar(ast::Var & astVar) {
+    auto & refToVar = interp.globals.getOrCreate(astVar.name);
+    targetVar = refToVar.getRaw(); // has to be alive
 }
 
-void Interpreter::TargetResolver::visitSelectField(SelectField & selectField) {
+void TargetResolver::visitSelectField(ast::SelectField & selectField) {
     auto evaluator = Evaluator(interp);
     auto obj = evaluator.evaluate(*selectField.obj);
-    scope = &obj->fields;
-    name = &selectField.name;
+    targetVar = &obj->fields.getOrCreate(selectField.name);
 }
 
-Interpreter::Evaluator::Evaluator(Interpreter & interp)
+Evaluator::Evaluator(Interpreter & interp)
         : interp(interp)
         , result(nullptr) {}
 
-Object * Interpreter::Evaluator::evaluate(Expression & expr) {
+Object * Evaluator::evaluate(ast::Expression & expr) {
     assert(result == nullptr);
     expr.accept(*this);
     assert(result != nullptr);
     return result;
 }
 
-void Interpreter::Evaluator::visitNewObject(NewObject & newObject) {
+void Evaluator::visitNewObject(ast::NewObject & newObject) {
     result = new Object();
 }
 
-void Interpreter::Evaluator::visitVar(Var & var) {
+void Evaluator::visitVar(ast::Var & astVar) {
     auto scopeResolver = TargetResolver(interp);
-    auto scope = scopeResolver.resolveScopeAndName(var).first;
-    result = scope->at(var.name).get();
+    auto var = scopeResolver.resolveVar(astVar);
+    result = var->get();
 }
 
-void Interpreter::Evaluator::visitSelectField(SelectField & selectField) {
+void Evaluator::visitSelectField(ast::SelectField & selectField) {
     auto scopeResolver = TargetResolver(interp);
-    auto scope = scopeResolver.resolveScopeAndName(selectField).first;
-    result = scope->at(selectField.name).get();
+    auto var = scopeResolver.resolveVar(selectField);
+    result = var->get();
 }

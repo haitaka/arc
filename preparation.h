@@ -2,6 +2,6 @@
 
 #include <vector>
 
-#include "ir.h"
+#include "ast.h"
 
-void prepare(std::vector<std::unique_ptr<Statement>> & prog);
+void prepare(std::vector<std::unique_ptr<ast::Statement>> & prog);

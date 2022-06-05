@@ -1,53 +1,48 @@
 #pragma once
 
 #include <vector>
-#include <unordered_map>
 
-#include "ir.h"
-#include "reference.h"
+#include "scope.h"
+#include "ast.h"
+#include "mm.h"
 
-// TODO create class?
-typedef std::unordered_map<std::string, StrongRefToVar> Scope;
-
-class Interpreter : public Statement::Visitor {
+class Interpreter : public ast::Statement::Visitor {
 public:
-    explicit Interpreter(std::vector<std::unique_ptr<Statement>> const & prog);
+    explicit Interpreter(std::vector<std::unique_ptr<ast::Statement>> const & prog);
     ~Interpreter();
     void interpret();
 public:
-    std::vector<std::unique_ptr<Statement>> const & prog;
-    Scope globals;
+    std::vector<std::unique_ptr<ast::Statement>> const & prog;
+    Scope<StrongRefToVar> globals;
 private:
 
-    void visitAssignStrong(AssignStrong & assignStrong) override;
-    void visitAssignWeak(AssignWeak & assignWeak) override;
+    void visitAssignStrong(ast::AssignStrong & assignStrong) override;
+    void visitAssignWeak(ast::AssignWeak & assignWeak) override;
 
-    void visitEndOfLife(EndOfLife & endOfLife) override;
-
-    class TargetResolver : public Expression::Visitor {
-    public:
-        explicit TargetResolver(Interpreter & interp);
-        std::pair<Scope *, std::string *> resolveScopeAndName(AssignableTo & assignableTo);
-    private:
-        Interpreter & interp;
-        Scope * scope;
-        std::string * name;
-
-        void visitVar(Var & var) override;
-        void visitSelectField(SelectField & selectField) override;
-    };
-
-    class Evaluator : public Expression::Visitor {
-    public:
-        explicit Evaluator(Interpreter & interp);
-        Object * evaluate(Expression & expr);
-    private:
-        Interpreter & interp;
-        Object * result;
-
-        void visitNewObject(NewObject & newObject) override;
-        void visitVar(Var & var) override;
-        void visitSelectField(SelectField & selectField) override;
-    };
+    void visitEndOfLife(ast::EndOfLife & endOfLife) override;
 };
 
+class TargetResolver : public ast::Expression::Visitor {
+public:
+    explicit TargetResolver(Interpreter & interp);
+    Var * resolveVar(ast::AssignableTo & assignableTo);
+private:
+    Interpreter & interp;
+    Var * targetVar;
+
+    void visitVar(ast::Var & astVar) override;
+    void visitSelectField(ast::SelectField & selectField) override;
+};
+
+class Evaluator : public ast::Expression::Visitor {
+public:
+    explicit Evaluator(Interpreter & interp);
+    Object * evaluate(ast::Expression & expr);
+private:
+    Interpreter & interp;
+    Object * result;
+
+    void visitNewObject(ast::NewObject & newObject) override;
+    void visitVar(ast::Var & astVar) override;
+    void visitSelectField(ast::SelectField & selectField) override;
+};
