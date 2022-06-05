@@ -1,77 +1,65 @@
 #include <cassert>
 #include <iostream>
 #include "reference.h"
-#include "object.h"
 
-Reference::Reference() : referent(nullptr), isStrong(false) {} // TODO used?
+template<typename T>
+Collectible<T>::Collectible(T && content) : content(content) {}
 
-Reference::Reference(Object * referent, bool isStrong)
-        : referent(referent)
-        , isStrong(isStrong) {
-    if (isStrong) {
-        referent->refCounter += 1;
-    } else {
-        referent->weakReferences.insert(this);
-    }
-    auto kind = isStrong ? "strong" : "weak";
-    std::clog << "New " << kind << " reference to " << referent
-        << " // counter is now " << referent->refCounter << std::endl;
+template<typename T>
+StrongRef<T>::StrongRef() : referent(nullptr) {} // TODO used?
+
+template<typename T>
+StrongRef<T>::StrongRef(Collectible<T> * referent)
+        : referent(referent) {
+    referent->refCounter += 1;
+    std::clog << "New strong reference to " << *referent << " @" << referent
+              << " // counter is now " << referent->refCounter << std::endl;
 }
 
-Reference::Reference(Reference const & existing, bool isStrong)
-        : Reference(existing.referent, isStrong) {}
+template<typename T>
+StrongRef<T>::StrongRef(StrongRef<T> && that) {
+    swap(that);
+}
 
-//Reference::Reference(Reference && that) noexcept
-//        : Reference() {
-//    swap(that);
-//}
-
-Reference::~Reference() {
+template<typename T>
+StrongRef<T>::~StrongRef() {
     if (referent != nullptr) {
-        auto kind = isStrong ? "strong" : "weak";
         uint counter = referent->refCounter;
-        if (isStrong) {
-            counter -= 1;
-        }
-        std::clog << "One less " << kind << " reference to " << referent;
+        counter -= 1;
+        std::clog << "One less strong reference to " << *referent << " @" << referent;
         std::clog << " // counter is now " << counter;
         std::clog << std::endl;
-
-        if (isStrong) {
-            { // TODO synchronize
-                referent->refCounter -= 1;
-                if (referent->refCounter == 0) {
-                    delete referent;
-                    // TODO clean other weak references
-                }
+        { // TODO synchronize
+            referent->refCounter -= 1;
+            if (referent->refCounter == 0) {
+                delete referent;
+                // TODO clean other weak references
             }
-        } else {
-            referent->weakReferences.erase(this);
         }
     }
 }
 
-//Reference & Reference::operator=(Reference && that) noexcept {
-//    swap(that);
-//    return *this;
-//}
+template<typename T>
+StrongRef<T> & StrongRef<T>::operator=(StrongRef<T> && that) {
+    swap(that);
+    return *this;
+}
 
-//void Reference::swap(Reference & that) {
-//    std::swap(this->referent, that.referent);
-//    std::swap(this->isStrong, that.isStrong);
-//}
+template<typename T>
+void StrongRef<T>::swap(StrongRef<T> & that) {
+    std::swap(this->referent, that.referent);
+}
 
-Object & Reference::operator*() const {
+template<typename T>
+Collectible<T> & StrongRef<T>::operator*() const {
+    assert(referent != nullptr);
     assert(referent->refCounter > 0);
     return *referent;
 }
 
-Object * Reference::operator->() const {
-    assert(referent->refCounter > 0);
-    return referent;
-}
-
-Object * Reference::get() const {
+template<typename T>
+Collectible<T> * StrongRef<T>::operator->() const {
+    assert(referent != nullptr);
     assert(referent->refCounter > 0);
     return referent;
 }

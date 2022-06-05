@@ -4,14 +4,10 @@
 #include <unordered_map>
 
 #include "ir.h"
-#include "object.h"
 #include "reference.h"
 
-class Reference;
-class Object;
-
 // TODO create class?
-typedef std::unordered_map<std::string, Reference> Scope;
+typedef std::unordered_map<std::string, StrongRefToVar> Scope;
 
 class Interpreter : public Statement::Visitor {
 public:
