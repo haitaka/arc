@@ -29,6 +29,17 @@ void Parser::consumeToken() {
 
 std::unique_ptr<ast::Statement> Parser::statement() {
     // TODO others
+    if (nextToken.kind == Token::Kind::Thread) {
+        return newThread();
+    }
+    if (nextToken.kind == Token::Kind::Sleep) {
+        consumeToken();
+        return std::make_unique<ast::Sleep>();
+    }
+    if (nextToken.kind == Token::Kind::Sleepr) {
+        consumeToken();
+        return std::make_unique<ast::Sleepr>();
+    }
     // assignments
     auto to = assignableTo();
     auto assignOp = nextToken;
@@ -43,6 +54,23 @@ std::unique_ptr<ast::Statement> Parser::statement() {
         assert(false); // TODO
         return nullptr;
     }
+}
+
+std::unique_ptr<ast::NewThread> Parser::newThread() {
+    assert(nextToken.kind == Token::Kind::Thread);
+    consumeToken();
+    assert(nextToken.kind == Token::Kind::LBrace);
+    consumeToken();
+
+    auto body = std::vector<std::unique_ptr<ast::Statement>>();
+    while (nextToken.kind != Token::Kind::RBrace) {
+        auto stat = statement();
+        // TODO require that stat is not newThread
+        body.push_back(std::move(stat));
+    }
+    consumeToken();
+
+    return std::make_unique<ast::NewThread>(std::move(body));
 }
 
 std::unique_ptr<ast::AssignableTo> Parser::assignableTo() {

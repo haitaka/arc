@@ -48,12 +48,57 @@ void ast::EndOfLife::accept(ast::Statement::Visitor & visitor) {
     visitor.visitEndOfLife(*this);
 }
 
+ast::NewThread::NewThread(std::vector<std::unique_ptr<Statement>> && body)
+        : body(std::move(body)) {}
+
+void ast::NewThread::print(std::ostream & out) const {
+    out << "newThread {" << std::endl;
+    for (auto const & stat : body) {
+        out << "    ";
+        stat->print(out);
+        out << std::endl;
+    }
+    out << "}";
+}
+
+void ast::NewThread::accept(ast::Statement::Visitor & visitor) {
+    visitor.visitNewThread(*this);
+}
+
+void ast::Sleep::print(std::ostream & out) const {
+    out << "sleep";
+}
+
+void ast::Sleep::accept(ast::Statement::Visitor & visitor) {
+    visitor.visitSleep(*this);
+}
+
+void ast::Sleepr::print(std::ostream & out) const {
+    out << "sleepr";
+}
+
+void ast::Sleepr::accept(ast::Statement::Visitor & visitor) {
+    visitor.visitSleepr(*this);
+}
+
 void ast::Statement::Visitor::visitAssignStrong(ast::AssignStrong & assignStrong) {
     visitStatement(assignStrong);
 }
 
 void ast::Statement::Visitor::visitAssignWeak(ast::AssignWeak & assignWeak) {
     visitStatement(assignWeak);
+}
+
+void ast::Statement::Visitor::visitNewThread(ast::NewThread & newThread) {
+    visitStatement(newThread);
+}
+
+void ast::Statement::Visitor::visitSleep(ast::Sleep & sleep) {
+    visitStatement(sleep);
+}
+
+void ast::Statement::Visitor::visitSleepr(ast::Sleepr & sleepr) {
+    visitStatement(sleepr);
 }
 
 void ast::Statement::Visitor::visitEndOfLife(ast::EndOfLife & endOfLife) {

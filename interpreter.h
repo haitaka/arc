@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <thread>
 
 #include "scope.h"
 #include "ast.h"
@@ -11,13 +12,18 @@ public:
     explicit Interpreter(std::vector<std::unique_ptr<ast::Statement>> const & prog);
     ~Interpreter();
     void interpret();
+    void interpret(std::unique_ptr<ast::Statement> const & stat);
 public:
-    std::vector<std::unique_ptr<ast::Statement>> const & prog;
+    std::vector<std::unique_ptr<ast::Statement>> const & prog; // TODO pass to interpret fun?
     Scope<StrongRefToVar> globals;
+    std::vector<std::thread> threads;
 private:
 
     void visitAssignStrong(ast::AssignStrong & assignStrong) override;
     void visitAssignWeak(ast::AssignWeak & assignWeak) override;
+    void visitNewThread(ast::NewThread & newThread) override;
+    void visitSleep(ast::Sleep & sleep) override;
+    void visitSleepr(ast::Sleepr & sleepr) override;
 
     void visitEndOfLife(ast::EndOfLife & endOfLife) override;
 };

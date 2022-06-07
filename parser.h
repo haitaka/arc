@@ -13,6 +13,7 @@ public:
 private:
     void consumeToken();
     std::unique_ptr<ast::Statement> statement();
+    std::unique_ptr<ast::NewThread> newThread();
     std::unique_ptr<ast::AssignableTo> assignableTo();
     std::unique_ptr<ast::Expression> expression();
 

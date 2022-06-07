@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <iostream>
 #include <memory>
 
@@ -85,15 +86,35 @@ namespace ast {
         std::string varName;
     };
 
-    // TODO NewThread
-    // TODO Sleep
-    // TODO SleepR
+    class NewThread : public Statement {
+    public:
+        explicit NewThread(std::vector<std::unique_ptr<Statement>> && body);
+        void print(std::ostream & out) const override;
+        void accept(Visitor & visitor) override;
+    private:
+        std::vector<std::unique_ptr<Statement>> body;
+    };
+
+    class Sleep : public Statement {
+    public:
+        void print(std::ostream & out) const override;
+        void accept(Visitor & visitor) override;
+    };
+
+    class Sleepr : public Statement {
+    public:
+        void print(std::ostream & out) const override;
+        void accept(Visitor & visitor) override;
+    };
     // TODO Dump
 
     class Statement::Visitor  {
     public:
         virtual void visitAssignStrong(AssignStrong & assignStrong);
         virtual void visitAssignWeak(AssignWeak & assignWeak);
+        virtual void visitNewThread(NewThread & newThread);
+        virtual void visitSleep(Sleep & sleep);
+        virtual void visitSleepr(Sleepr & sleepr);
         virtual void visitEndOfLife(EndOfLife & endOfLife);
         virtual void visitStatement(Statement & stat);
     };

@@ -19,9 +19,17 @@ private:
         assignWeak.from->accept(*this);
     }
 
-    void visitNewObject(ast::NewObject & newObject) override {
-        // nop
+    void visitNewThread(ast::NewThread & newThread) override {
+        for (auto & stat : newThread.body) {
+            stat->accept(*this);
+        }
     }
+
+    void visitSleep(ast::Sleep & sleep) override {}
+
+    void visitSleepr(ast::Sleepr & sleepr) override {}
+
+    void visitNewObject(ast::NewObject & newObject) override {}
 
     void visitVar(ast::Var & var) override {
         usedVars.insert(var.name);

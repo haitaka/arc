@@ -45,6 +45,10 @@ Token Lexer::next() {
         return atom(Token::Kind::Eq, "=");
     } else if (peeked == '~') {
         return atom(Token::Kind::TildEq, "~=");
+    } else if (peeked == '{') {
+        return atom(Token::Kind::LBrace, "{");
+    } else if (peeked == '}') {
+        return atom(Token::Kind::RBrace, "}");
     } else if (peeked == '/') {
         return comment();
     } else if (isalpha(peeked)) {
@@ -91,6 +95,14 @@ Token Lexer::word() {
     auto word = std::string_view(begin, std::distance(begin, end));
     if (word == "object") {
         return Token(Token::Kind::Object, begin, end);
+    } else if (word == "thread") {
+        return Token(Token::Kind::Thread, begin, end);
+    } else if (word == "sleep") {
+        return Token(Token::Kind::Sleep, begin, end);
+    } else if (word == "sleepr") {
+        return Token(Token::Kind::Sleepr, begin, end);
+    } else if (word == "dump") {
+        return Token(Token::Kind::Dump, begin, end);
     }
     return Token(Token::Kind::Ident, begin, end);
 }

@@ -1,4 +1,7 @@
 #include <cassert>
+#include <thread>
+#include <chrono>
+#include <cstdlib>
 #include "interpreter.h"
 #include "ast.h"
 
@@ -6,12 +9,20 @@ Interpreter::Interpreter(std::vector<std::unique_ptr<ast::Statement>> const & pr
 
 void Interpreter::interpret() {
     for (auto & elem: prog) {
-        std::clog << "Interpreting ";
-        elem->print(std::clog);
-        std::clog << std::endl;
-
-        elem->accept(*this);
+        interpret(elem);
     }
+
+    for (auto & thread : threads) {
+        thread.join();
+    }
+}
+
+void Interpreter::interpret(std::unique_ptr<ast::Statement> const & stat) {
+    std::clog << "Interpreting ";
+    stat->print(std::clog);
+    std::clog << std::endl;
+
+    stat->accept(*this);
 }
 
 void Interpreter::visitAssignStrong(ast::AssignStrong & assignStrong) {
@@ -30,6 +41,28 @@ void Interpreter::visitAssignWeak(ast::AssignWeak & assignWeak) { // TODO genera
     auto scopeResolver = TargetResolver(*this);
     auto var = scopeResolver.resolveVar(*assignWeak.to);
     var->putWeak(obj);
+}
+
+void Interpreter::visitNewThread(ast::NewThread & newThread) { // TODO generalize
+    std::clog << "Starting new thread" << std::endl;
+    auto thread = std::thread([this, & newThread](){
+        for (auto & stat : newThread.body) {
+            interpret(stat);
+        }
+        std::clog << "Finished a thread" << std::endl;
+    });
+    threads.push_back(std::move(thread));
+}
+
+void Interpreter::visitSleep(ast::Sleep & sleep) {
+    using namespace std::chrono_literals;
+    std::this_thread::sleep_for(100ms);
+}
+
+void Interpreter::visitSleepr(ast::Sleepr & sleepr) {
+    using namespace std::chrono_literals;
+    auto duration = 10 + std::rand() / ((RAND_MAX + 1u) / 90);
+    std::this_thread::sleep_for(std::chrono::milliseconds(duration));
 }
 
 void Interpreter::visitEndOfLife(ast::EndOfLife & endOfLife) {
