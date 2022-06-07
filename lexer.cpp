@@ -11,6 +11,12 @@ std::ostream & operator <<(std::ostream & out, Token::Kind const & kind) {
         case Token::Kind::Eq: out << "Eq"; break;
         case Token::Kind::TildEq: out << "TildEq"; break;
         case Token::Kind::Object: out << "Object"; break;
+        case Token::Kind::Thread: out << "Thread"; break;
+        case Token::Kind::LBrace: out << "LBrace"; break;
+        case Token::Kind::RBrace: out << "RBrace"; break;
+        case Token::Kind::Sleep: out << "Sleep"; break;
+        case Token::Kind::Sleepr: out << "Sleepr"; break;
+        case Token::Kind::Dump: out << "Dump"; break;
         case Token::Kind::Ident: out << "Ident"; break;
         case Token::Kind::Comment: out << "Comment"; break;
         case Token::Kind::End: out << "End"; break;
