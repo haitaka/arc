@@ -17,6 +17,8 @@ private:
 
 template<typename T>
 T & Scope<T>::getOrCreate(std::string const & name) {
+    auto lock = std::lock_guard<std::mutex>(mutex);
+
     auto iterAndFlag = map.emplace(std::piecewise_construct, std::forward_as_tuple(name),
                                    std::forward_as_tuple()); // FIXME ?
     auto iter = iterAndFlag.first;
@@ -25,5 +27,6 @@ T & Scope<T>::getOrCreate(std::string const & name) {
 
 template<typename T>
 void Scope<T>::erase(std::string const & name) {
+    auto lock = std::lock_guard<std::mutex>(mutex);
     map.erase(name);
 }

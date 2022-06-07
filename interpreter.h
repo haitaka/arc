@@ -37,10 +37,10 @@ private:
 class Evaluator : public ast::Expression::Visitor {
 public:
     explicit Evaluator(Interpreter & interp);
-    Object * evaluate(ast::Expression & expr);
+    Collectible<Object> * evaluate(ast::Expression & expr);
 private:
     Interpreter & interp;
-    Object * result;
+    Collectible<Object> * result;
 
     void visitNewObject(ast::NewObject & newObject) override;
     void visitVar(ast::Var & astVar) override;

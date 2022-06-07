@@ -56,20 +56,24 @@ Var * TargetResolver::resolveVar(ast::AssignableTo & assignableTo) {
 
 void TargetResolver::visitVar(ast::Var & astVar) {
     auto & refToVar = interp.globals.getOrCreate(astVar.name);
+    // FIXME
+    if (refToVar.getRaw() == nullptr) {
+        refToVar = std::move(StrongRefToVar(new Collectible<Var>()));
+    }
     targetVar = refToVar.getRaw(); // has to be alive
 }
 
 void TargetResolver::visitSelectField(ast::SelectField & selectField) {
     auto evaluator = Evaluator(interp);
     auto obj = evaluator.evaluate(*selectField.obj);
-    targetVar = &obj->fields.getOrCreate(selectField.name);
+    targetVar = &obj->content.fields.getOrCreate(selectField.name);
 }
 
 Evaluator::Evaluator(Interpreter & interp)
         : interp(interp)
         , result(nullptr) {}
 
-Object * Evaluator::evaluate(ast::Expression & expr) {
+Collectible<Object> * Evaluator::evaluate(ast::Expression & expr) {
     assert(result == nullptr);
     expr.accept(*this);
     assert(result != nullptr);
@@ -77,7 +81,7 @@ Object * Evaluator::evaluate(ast::Expression & expr) {
 }
 
 void Evaluator::visitNewObject(ast::NewObject & newObject) {
-    result = new Object();
+    result = new Collectible<Object>();
 }
 
 void Evaluator::visitVar(ast::Var & astVar) {

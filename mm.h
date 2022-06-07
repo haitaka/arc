@@ -12,7 +12,7 @@ class AnyCollectible {
 template<typename T>
 class Collectible : public AnyCollectible {
 public:
-    explicit Collectible(T && content);
+    Collectible() = default;
     Collectible(Collectible<T> const & that) = delete;
     ~Collectible() = default;
     Collectible & operator =(Collectible<T> const & that) = delete;
@@ -42,7 +42,9 @@ class StrongRefToVar final : public StrongRef<Collectible<Var> *> { // TODO all 
 public:
     StrongRefToVar(); // TODO constr/desrt
     explicit StrongRefToVar(Collectible<Var> * referent);
+    StrongRefToVar(StrongRefToVar && that);
     ~StrongRefToVar() override;
+    StrongRefToVar & operator =(StrongRefToVar && that);
     // Collectible<Var> & operator *() const;
     // Collectible<Var> * operator ->() const;
     Var * getRaw() const; // TODO consider *
@@ -59,29 +61,32 @@ public:
     ~StrongRefToObj() override;
     // Collectible<Object> & operator *() const;
     // Collectible<Object> * operator ->() const;
-    Object * get();
-    void putStrong(Object * obj);
-    void putWeak(Object * obj);
+    Collectible<Object> * get();
+    void putStrong(Collectible<Object> * obj);
+    void putWeak(Collectible<Object> * obj);
 private:
     static std::size_t const WEAK_TAG = 1;
 };
 
 // TODO comment
 class WeakRef {
-    explicit WeakRef(Object * referent);
-    // TODO assert no ref in destr?
-    Object & operator *() const;
-    Object * operator ->() const;
 public:
+    WeakRef();
+    explicit WeakRef(Collectible<Object> * referent);
+    // TODO assert no ref in destr?
 private:
-    Object * referent;
+    Collectible<Object> * referent;
 };
 
 class Var { // TODO remove
 public:
-    Object * get();
-    void putStrong(Object * obj);
-    void putWeak(Object * obj);
+    Var() = default;
+    Var(Var && that);
+    Var & operator=(Var && that);
+    void swap(Var & that);
+    Collectible<Object> * get();
+    void putStrong(Collectible<Object> * obj);
+    void putWeak(Collectible<Object> * obj);
 private:
     StrongRefToObj ref;
 };
@@ -89,8 +94,10 @@ private:
 class Object {
 public:
     Object() = default;
+    ~Object();
 public:
     Scope<Var> fields;
+    Collectible<WeakRef> * weakRef = nullptr;
 };
 
 
