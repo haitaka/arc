@@ -3,87 +3,76 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <unordered_set>
 #include <memory>
-
-// FIXME
-#define private public
 
 namespace ast {
     class Elem {
     public:
+        virtual ~Elem() = default;
         virtual void print(std::ostream & out) const = 0;
     };
 
-    // TODO mark abstracts ?
     class Expression : public Elem {
     public:
         class Visitor;
         virtual void accept(Visitor & visitor) = 0;
     };
 
-    class AssignableTo : public Expression {
-    public:
-    };
+    class AssignableTo : public Expression {};
 
     class Statement : public Elem {
     public:
-        class Visitor; // TODO const visitors?
+        class Visitor;
         virtual void accept(Visitor & visitor) = 0;
     };
 
     class NewObject : public Expression {
     public:
-        NewObject() = default;
+        explicit NewObject(std::string  name);
         void print(std::ostream & out) const override;
         void accept(Visitor & visitor) override;
+
+        std::string name;
     };
 
     class Var : public AssignableTo {
     public:
-        explicit Var(std::string const & name);
+        explicit Var(std::string name);
         void print(std::ostream & out) const override;
         void accept(Visitor & visitor) override;
-    private:
-        std::string name;
+
+        std::string const name;
     };
 
     class SelectField : public AssignableTo {
     public:
-        SelectField(std::unique_ptr<AssignableTo> && obj, std::string const & name);
+        SelectField(std::unique_ptr<AssignableTo> && obj, std::string name);
         void print(std::ostream & out) const override;
         void accept(Visitor & visitor) override;
-    private:
-        std::unique_ptr<AssignableTo> obj;
-        std::string name;
+
+        std::unique_ptr<AssignableTo> const obj;
+        std::string const name;
     };
 
-    class AssignStrong : public Statement {
+    class Assign : public Statement {
     public:
-        AssignStrong(std::unique_ptr<AssignableTo> && to, std::unique_ptr<Expression> && from);
+        Assign(std::unique_ptr<AssignableTo> && to, std::unique_ptr<Expression> && from, bool isWeak);
         void print(std::ostream & out) const override;
         void accept(Visitor & visitor) override;
-    private:
-        std::unique_ptr<AssignableTo> to;
-        std::unique_ptr<Expression> from;
-    };
 
-    class AssignWeak : public Statement {
-    public:
-        AssignWeak(std::unique_ptr<AssignableTo> && to, std::unique_ptr<Expression> && from);
-        void print(std::ostream & out) const override;
-        void accept(Visitor & visitor) override;
-    private:
-        std::unique_ptr<AssignableTo> to;
-        std::unique_ptr<Expression> from;
+        bool const isWeak;
+        std::unique_ptr<AssignableTo> const to;
+        std::unique_ptr<Expression> const from;
     };
 
     class EndOfLife : public Statement {
     public:
-        explicit EndOfLife(std::string const & var);
+        explicit EndOfLife(std::string var);
         void print(std::ostream & out) const override;
         void accept(Visitor & visitor) override;
-    private:
-        std::string varName;
+
+        std::string const varName;
     };
 
     class NewThread : public Statement {
@@ -91,8 +80,9 @@ namespace ast {
         explicit NewThread(std::vector<std::unique_ptr<Statement>> && body);
         void print(std::ostream & out) const override;
         void accept(Visitor & visitor) override;
-    private:
-        std::vector<std::unique_ptr<Statement>> body;
+
+        std::vector<std::unique_ptr<Statement>> const body;
+        std::unordered_set<std::string> usedVars;
     };
 
     class Sleep : public Statement {
@@ -106,15 +96,23 @@ namespace ast {
         void print(std::ostream & out) const override;
         void accept(Visitor & visitor) override;
     };
-    // TODO Dump
+
+    class Dump : public Statement {
+    public:
+        explicit Dump(std::unique_ptr<Expression> expr);
+        void print(std::ostream & out) const override;
+        void accept(Visitor & visitor) override;
+
+        std::unique_ptr<Expression> expr;
+    };
 
     class Statement::Visitor  {
     public:
-        virtual void visitAssignStrong(AssignStrong & assignStrong);
-        virtual void visitAssignWeak(AssignWeak & assignWeak);
+        virtual void visitAssign(Assign & assign);
         virtual void visitNewThread(NewThread & newThread);
         virtual void visitSleep(Sleep & sleep);
         virtual void visitSleepr(Sleepr & sleepr);
+        virtual void visitDump(Dump & dump);
         virtual void visitEndOfLife(EndOfLife & endOfLife);
         virtual void visitStatement(Statement & stat);
     };

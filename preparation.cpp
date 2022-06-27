@@ -3,20 +3,16 @@
 
 #include <iostream>
 #include <unordered_set>
+#include <forward_list>
 #include <cassert>
 
 class UsageFinder : public ast::Statement::Visitor, public ast::Expression::Visitor {
 public:
     std::unordered_set<std::string> usedVars;
 private:
-    void visitAssignStrong(ast::AssignStrong & assignStrong) override {
-        assignStrong.to->accept(*this);
-        assignStrong.from->accept(*this);
-    }
-
-    void visitAssignWeak(ast::AssignWeak & assignWeak) override {
-        assignWeak.to->accept(*this);
-        assignWeak.from->accept(*this);
+    void visitAssign(ast::Assign & assign) override {
+        assign.to->accept(*this);
+        assign.from->accept(*this);
     }
 
     void visitNewThread(ast::NewThread & newThread) override {
@@ -29,6 +25,10 @@ private:
 
     void visitSleepr(ast::Sleepr & sleepr) override {}
 
+    void visitDump(ast::Dump & dump) override {
+        dump.expr->accept(*this);
+    }
+
     void visitNewObject(ast::NewObject & newObject) override {}
 
     void visitVar(ast::Var & var) override {
@@ -40,20 +40,40 @@ private:
     }
 };
 
-// TODO generalize?
-void prepare(std::vector<std::unique_ptr<ast::Statement>> & prog) {
-    std::unordered_set<std::string> aliveVars; // FIXME alive or not yet declared
-    for (uint i = prog.size(); i > 0; --i) {
-        uint j = i - 1;
-        assert(j < prog.size());
-        auto & stat = prog[j];
+class VarsUsedInThreadCollector : public ast::Statement::Visitor {
+public:
+    explicit VarsUsedInThreadCollector(std::unordered_set<std::string> & usedVars) : usedVars(usedVars) {}
+
+    void visitNewThread(ast::NewThread & newThread) override {
+        newThread.usedVars = usedVars;
+    }
+
+    void visitStatement(ast::Statement & stat) override {}
+
+private:
+    std::unordered_set<std::string> & usedVars;
+};
+
+std::unordered_set<std::string> preprocess(std::vector<std::unique_ptr<ast::Statement>> & prog) {
+    std::forward_list<std::unique_ptr<ast::Statement>> processedProg;
+    std::unordered_set<std::string> aliveAndUndeclaredVars;
+    for (auto iter = prog.rbegin(); iter != prog.rend(); iter++) {
+        auto & stat = *iter;
         auto usageFinder = UsageFinder();
         stat->accept(usageFinder);
+        auto threadPatcher = VarsUsedInThreadCollector(usageFinder.usedVars);
+        stat->accept(threadPatcher);
         for (auto const & usedVar: usageFinder.usedVars) {
-            if (aliveVars.count(usedVar) == 0) {
-                prog.insert(prog.begin() + j + 1, std::make_unique<ast::EndOfLife>(usedVar));
-                aliveVars.insert(usedVar);
+            if (aliveAndUndeclaredVars.count(usedVar) == 0) {
+                processedProg.push_front(std::make_unique<ast::EndOfLife>(usedVar));
+                aliveAndUndeclaredVars.insert(usedVar);
             }
         }
+        processedProg.push_front(std::move(stat));
     }
+    prog.clear();
+    for (auto & stat: processedProg) {
+        prog.push_back(std::move(stat));
+    }
+    return aliveAndUndeclaredVars;
 }

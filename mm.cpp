@@ -1,147 +1,283 @@
 #include <cassert>
 #include <iostream>
+#include <sstream>
 #include "mm.h"
+#include "logger.h"
 
+Collectible::Collectible() : refCounter(1) {}
 
-StrongRefToVar::StrongRefToVar()
-        : StrongRefToVar(nullptr) {}
-
-StrongRefToVar::StrongRefToVar(Collectible<Var> * referent)
-        : StrongRef<Collectible<Var> *>(referent) {
-    if (referent != nullptr) {
-        referent->refCounter += 1;
-    }
+void Collectible::incCounter() {
+    auto prev = refCounter.fetch_add(1, std::memory_order_acq_rel);
+    // Counter should have been initialized in constructor.
+    // And it should be impossible to try to incCounter for the object,
+    // that can die in a process (i.e. our caller should hold a strong ref to the object).
+    assert(prev != 0);
+    std::stringstream buf;
+    buf << "Inc counter in " << this << " (was " << prev << ")" << std::endl;
+    log(buf);
 }
 
-StrongRefToVar::StrongRefToVar(StrongRefToVar && that)
-        : StrongRef<Collectible<Var> *>(std::move(that)) {}
-
-StrongRefToVar::~StrongRefToVar() {
-    if (referent != nullptr) {
-        referent->refCounter -= 1; // FIXME race
-        assert(referent->refCounter >= 0);
-        if (referent->refCounter == 0) {
-            std::clog << "Var " << referent << " got dead" << std::endl;
-            delete referent;
+void Collectible::decCounter() {
+    auto prev = refCounter.fetch_sub(1, std::memory_order_acq_rel);
+    {
+        std::stringstream buf;
+        buf << "Dec counter in " << this << " (was " << prev << ")" << std::endl;
+        log(buf);
+    }
+    if (prev == 1) {
+        // free the object only if we were the thread that have seen the pre-zero counter
+        {
+            std::stringstream buf;
+            buf << "Object " << this << " got dead" << std::endl;
+            log(buf);
         }
+        delete this;
     }
 }
 
-StrongRefToVar & StrongRefToVar::operator=(StrongRefToVar && that) {
-    StrongRef<Collectible<Var> *>::operator=(std::move(that));
+Collectible::~Collectible() {
+    refCounter.store(0xBADBAD, std::memory_order_relaxed);
+}
+
+uint Collectible::getRefCounter() const {
+    return refCounter.load(std::memory_order_relaxed); // not to synchronize with
+}
+
+RefToObj::RefToObj() : RefToObj(0) {}
+
+RefToObj::RefToObj(std::size_t referent) : referent(referent) {}
+
+RefToObj::RefToObj(RefToObj && that)  noexcept {
+    auto thatVal = that.referent.exchange(0, std::memory_order_relaxed);
+    referent.store(thatVal, std::memory_order_release);
+}
+
+RefToObj::RefToObj(RefToObj const & that) noexcept : RefToObj() {
+    auto thatReferent = that.referent.load(std::memory_order_relaxed);
+    auto thatPtr = clearWeakFlag(thatReferent);
+    thatPtr->incCounter();
+    referent.exchange(thatReferent, std::memory_order_relaxed);
+}
+
+RefToObj::~RefToObj() {
+    auto taggedReferentPtr = referent.load(std::memory_order_relaxed);
+    Collectible * collectible;
+    if (taggedReferentPtr != 0) {
+        if ((taggedReferentPtr & WEAK_TAG) != 0) {
+            collectible = (WeakRef *) clearWeakFlag(taggedReferentPtr);
+        } else {
+            collectible = (Object *) taggedReferentPtr;
+        }
+        collectible->decCounter();
+    }
+}
+
+RefToObj & RefToObj::operator=(RefToObj && that) noexcept {
+    auto thatVal = that.referent.exchange(0, std::memory_order_relaxed);
+    auto thisVal = referent.exchange(thatVal, std::memory_order_relaxed);
+    that.referent.store(thisVal, std::memory_order_release);
     return *this;
 }
 
-Var * StrongRefToVar::getRaw() const {
-    return &referent->content;
-}
-
-
-StrongRefToObj::StrongRefToObj() : StrongRefToObj(nullptr) {
-
-}
-
-StrongRefToObj::StrongRefToObj(Collectible<Object> * referent)
-        : StrongRef<std::size_t>((std::size_t) (referent)) { // FIXME is it a bad cast?
-    if (referent != nullptr) {
-        referent->refCounter += 1;
+RefToObj & RefToObj::operator=(RefToObj const & that) noexcept {
+    if (this == &that) {
+        return *this;
     }
+
+    auto thatCopy = RefToObj(that);
+    *this = RefToObj(that);
+
+    return *this;
 }
 
-StrongRefToObj::~StrongRefToObj() {
-    // TODO generalize
-    auto taggedReferentPtr = referent;
-    if (referent != 0) {
-        if ((taggedReferentPtr & WEAK_TAG) != 0) {
-            auto weakRef = (Collectible<WeakRef> *) (taggedReferentPtr & ~WEAK_TAG);
-            weakRef->refCounter -= 1; // FIXME race
-            assert(weakRef->refCounter >= 0);
-            if (weakRef->refCounter == 0) {
-                std::clog << "Weak ref to " << weakRef->content.referent << " got dead" << std::endl;
-                delete weakRef;
-            }
-        } else {
-            auto referent = (Collectible<Object> *) taggedReferentPtr; // TODO dont hide
-            referent->refCounter -= 1; // FIXME race
-            assert(referent->refCounter >= 0);
-            if (referent->refCounter == 0) {
-                std::clog << "Object " << referent << " got dead" << std::endl;
-                delete referent;
-            }
-        }
-    }
+bool RefToObj::isEmpty() const {
+    return referent.load(std::memory_order_relaxed) == 0;
 }
 
-Collectible<Object> * StrongRefToObj::get() {
-    auto taggedReferentPtr = referent;
+bool RefToObj::isWeak() const {
+    return (referent.load(std::memory_order_relaxed) & WEAK_TAG) != 0;
+}
+
+Object * RefToObj::get() const {
+    auto taggedReferentPtr = referent.load();
     if ((taggedReferentPtr & WEAK_TAG) != 0) {
-        auto weakRef = (Collectible<WeakRef> *) (taggedReferentPtr & ~WEAK_TAG);
-        auto referent = weakRef->content.referent;
-        if (referent == nullptr) {
-            throw "NPE"; // TODO
+        auto weakRef = (WeakRef *) clearWeakFlag(taggedReferentPtr);
+        auto obj = weakRef->referent.load(std::memory_order_acquire);
+        if (obj == nullptr) {
+            throw WeakRef::InvalidAccess();
         }
-        return referent;
+        return obj;
     } else {
-        auto referent = (Collectible<Object> *) taggedReferentPtr;
-        assert(referent != nullptr);
-        return referent;
+        auto obj = (Object *) taggedReferentPtr;
+        assert(obj != nullptr);
+        return obj;
     }
 }
 
-void StrongRefToObj::putStrong(Collectible<Object> * obj) {
-    std::clog << "New strong ref to " << obj << std::endl;
+Collectible * RefToObj::getRaw() const {
+    return (Collectible * ) (clearWeakFlag(referent.load(std::memory_order_acquire)));
+}
+
+Object & RefToObj::operator*() const {
+    return *get();
+}
+
+Object * RefToObj::operator->() const {
+    return get();
+}
+
+Collectible * RefToObj::clearWeakFlag(std::size_t tagged) {
+    return (Collectible *) (tagged & ~WEAK_TAG);
+}
+
+RefToObj RefToObj::newStrong(Object * obj) {
+    std::stringstream buf;
+    buf << "New strong ref to " << obj << std::endl;
+    log(buf);
+    assert(obj->getRefCounter() == 1);
     auto taggedReferentPtr = (std::size_t) obj;
-    obj->refCounter += 1;
-    referent = taggedReferentPtr; // TODO atomic stuff
+    return RefToObj(taggedReferentPtr);
 }
 
-void StrongRefToObj::putWeak(Collectible<Object> * obj) {
-    std::clog << "New weak ref to " << obj << std::endl;
-    Collectible<WeakRef> * weakRef;
-    if (obj->content.weakRef == nullptr) {
-        weakRef = new Collectible<WeakRef>(); // TODO atomic
-        weakRef->content.referent = obj;
-        weakRef->refCounter += 1;
-        obj->content.weakRef = weakRef;
+RefToObj RefToObj::makeStrong(RefToObj const & orig) {
+    auto obj = orig.get();
+    obj->incCounter();
+    {
+        std::stringstream buf;
+        buf << "New strong ref to " << obj << std::endl;
+        log(buf);
     }
-    auto taggedReferentPtr = (std::size_t) weakRef | WEAK_TAG;
-    referent = taggedReferentPtr;
+    auto taggedReferentPtr = (std::size_t) obj;
+    return RefToObj(taggedReferentPtr);
 }
 
+RefToObj RefToObj::makeWeak(RefToObj const & orig) {
+    auto obj = orig.get();
+    {
+        std::stringstream buf;
+        buf << "New weak ref to " << obj << std::endl;
+        log(buf);
+    }
+    WeakRef * weakRef;
+    if (obj->weakRef.isEmpty(std::memory_order_relaxed)) {
+        weakRef = new WeakRef();
+        {
+            std::stringstream buf;
+            buf << "Weak ref " << weakRef << " allocated" << std::endl;
+            log(buf);
+        }
+        weakRef->referent.store(obj, std::memory_order_relaxed);
+        obj->weakRef.referent.store(weakRef, std::memory_order_release);
+    }
+    weakRef = obj->weakRef.asPtr();
+    weakRef->incCounter();
+    auto taggedReferentPtr = (std::size_t) weakRef | WEAK_TAG;
+    return RefToObj(taggedReferentPtr);
+}
+
+Global::~Global() {
+    std::stringstream buf;
+    buf << "Global " << this << " got dead" << std::endl;
+    log(buf);
+}
 
 WeakRef::WeakRef() : referent(nullptr) {}
 
-WeakRef::WeakRef(Collectible<Object> * referent)
-        : referent(referent) {}
+WeakRef::WeakRef(Object * referent) : referent(referent) {}
 
-Var::Var(Var && that) {
-    swap(that);
+WeakRef::~WeakRef() {
+    assert(referent.load(std::memory_order_relaxed) == nullptr);
 }
 
-Var & Var::operator=(Var && that) {
-    swap(that);
-    return *this;
+void WeakRef::clear() {
+    referent.store(nullptr, std::memory_order_release);
 }
 
-void Var::swap(Var & that) {
-    ref.swap(that.ref);
+char const * WeakRef::InvalidAccess::what() const noexcept {
+    return "dereferencing already freed weak reference";
 }
 
-Collectible<Object> * Var::get() {
-    return ref.get();
+Scope::NoSuchVar::NoSuchVar(char const * varKind, std::string const & varName) {
+    std::stringstream buf;
+    buf << "reading of undeclared " << varKind << " \"" << varName << "\"";
+    descr = buf.str();
 }
 
-void Var::putStrong(Collectible<Object> * obj) {
-    ref.putStrong(obj);
+char const * Scope::NoSuchVar::what() const noexcept {
+    return descr.c_str();
 }
 
-void Var::putWeak(Collectible<Object> * obj) {
-    ref.putWeak(obj);
+Globals::Globals(std::unordered_set<std::string> const & names) : globals() {
+    for (auto & name : names) {
+        globals[name]; // initialize all possible pairs to prevent future reallocations
+    }
 }
 
+RefToObj Globals::get(std::string const & name) const {
+    auto & refToGlobal = globals.at(name);
+    if (refToGlobal.isEmpty(std::memory_order_acquire)) {
+        throw NoSuchVar("global variable", name);
+    }
+    return refToGlobal->ref;
+}
+
+void Globals::put(std::string const & name, RefToObj && value) {
+    auto & refToGlobal = globals.at(name);
+    refToGlobal.initIfEmpty(); // first assignment is initialization
+    refToGlobal->ref = std::move(value);
+}
+
+void Globals::erase(std::string const & name) {
+    globals.at(name) = StrongRef<Global>();
+}
+
+Globals Globals::makeSubsetInitIfNeeded(std::unordered_set<std::string> const & names) {
+    auto subset = Globals(names);
+    for (auto & var : names) {
+        StrongRef<Global> & x = globals.at(var);
+        x.initIfEmpty();
+        auto ptr = x.asPtr();
+        assert(ptr != nullptr);
+        subset.globals.at(var) = std::move(StrongRef<Global>::makeStrong(ptr));
+    }
+    return std::move(subset);
+}
+
+RefToObj Fields::get(std::string const & name) const {
+    auto lock = std::lock_guard<std::mutex>(mutex);
+
+    try {
+        return fields.at(name);
+    } catch (std::out_of_range & ex) {
+        throw NoSuchVar("field", name);
+    }
+}
+
+void Fields::put(std::string const & name, RefToObj && value) {
+    auto lock = std::lock_guard<std::mutex>(mutex);
+    fields.emplace(name, std::move(value));
+}
+
+std::unordered_map<std::string, Field> Fields::getMap() const {
+    return {fields};
+}
+
+Object::Object(std::string const & name) : name(name), weakRef() {
+    std::stringstream buf;
+    buf << "New object " << name << "(" << this << ")" << std::endl;
+    log(buf);
+}
 
 Object::~Object() {
-    if (weakRef != nullptr) {
-        weakRef->content.referent = nullptr;
+    std::stringstream buf;
+    buf << "Object " << name << "(" << this << ")" << " collected" << std::endl;
+    log(buf);
+
+    if (!weakRef.isEmpty(std::memory_order_relaxed)) {
+        weakRef->clear();
     }
+}
+
+Fields & Object::getFields() {
+    return fields;
 }

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vector>
+#include <list>
 
 #include "ast.h"
 
-void prepare(std::vector<std::unique_ptr<ast::Statement>> & prog);
+std::unordered_set<std::string> preprocess(std::vector<std::unique_ptr<ast::Statement>> & prog);

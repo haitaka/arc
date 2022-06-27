@@ -1,18 +1,9 @@
 #include <iostream>
 #include <vector>
-#include <cassert>
 #include <fstream>
 #include <memory>
-#include <sstream>
 
-#include "parser.h"
-#include "ast.h"
-#include "interpreter.h"
-#include "preparation.h"
-
-// TODO noexcept
-// TODO default initializers ({}, = nullptr)
-// TODO C++17
+#include "run.h"
 
 std::string getFileContent(std::string const & path) {
     std::ifstream file(path);
@@ -20,26 +11,19 @@ std::string getFileContent(std::string const & path) {
     return content;
 }
 
+void printUsageAndDie() {
+    std::cerr << "Usage: arc <script.arc>" << std::endl;
+    exit(1);
+}
+
 int main(int argc, char ** argv) {
-    assert(argc == 2); // TODO
+    if (argc != 2) {
+        printUsageAndDie();
+    }
     auto filename = argv[1];
     auto prog = getFileContent(filename);
 
-    Parser parser(prog.c_str());
-    std::vector<std::unique_ptr<ast::Statement>> statements;
-    while (parser.hasNext()) {
-        statements.push_back(parser.nextStatement());
-    }
-
-    for (auto & stat: statements) {
-        stat->print(std::cout);
-        std::cout << std::endl;
-    }
-
-    prepare(statements);
-
-    Interpreter interp(statements);
-    interp.interpret();
+    run(prog);
 
     return 0;
 }

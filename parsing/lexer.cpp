@@ -7,18 +7,21 @@
 
 std::ostream & operator <<(std::ostream & out, Token::Kind const & kind) {
     switch (kind) {
-        case Token::Kind::Dot: out << "Dot"; break;
-        case Token::Kind::Eq: out << "Eq"; break;
-        case Token::Kind::TildEq: out << "TildEq"; break;
-        case Token::Kind::Object: out << "Object"; break;
-        case Token::Kind::Thread: out << "Thread"; break;
-        case Token::Kind::LBrace: out << "LBrace"; break;
-        case Token::Kind::RBrace: out << "RBrace"; break;
-        case Token::Kind::Sleep: out << "Sleep"; break;
-        case Token::Kind::Sleepr: out << "Sleepr"; break;
-        case Token::Kind::Dump: out << "Dump"; break;
-        case Token::Kind::Ident: out << "Ident"; break;
+        case Token::Kind::Dot: out << "`.`"; break;
+        case Token::Kind::Eq: out << "`=`"; break;
+        case Token::Kind::TildEq: out << "`~=`"; break;
+        case Token::Kind::Object: out << "`object`"; break;
+        case Token::Kind::Thread: out << "`thread`"; break;
+        case Token::Kind::LBrace: out << "`{`"; break;
+        case Token::Kind::RBrace: out << "`}`"; break;
+        case Token::Kind::LParenth: out << "`(`"; break;
+        case Token::Kind::RParenth: out << "`)`"; break;
+        case Token::Kind::Sleep: out << "`sleep`"; break;
+        case Token::Kind::Sleepr: out << "`sleepr`"; break;
+        case Token::Kind::Dump: out << "`dump`"; break;
+        case Token::Kind::Ident: out << "Identifier"; break;
         case Token::Kind::Comment: out << "Comment"; break;
+        case Token::Kind::Invalid: out << "Invalid token"; break;
         case Token::Kind::End: out << "End"; break;
     }
     return out;
@@ -28,7 +31,7 @@ Token::Token()
         : kind(Kind::End)
         , range() {}
 
-Token::Token(Token::Kind kind, char const * begin, uint len)
+Token::Token(Token::Kind kind, char const * begin, size_t len)
         : kind(kind)
         , range(begin, len) {}
 
@@ -55,12 +58,22 @@ Token Lexer::next() {
         return atom(Token::Kind::LBrace, "{");
     } else if (peeked == '}') {
         return atom(Token::Kind::RBrace, "}");
+    } else if (peeked == '(') {
+        return atom(Token::Kind::LParenth, "(");
+    } else if (peeked == ')') {
+        return atom(Token::Kind::RParenth, ")");
     } else if (peeked == '/') {
         return comment();
-    } else if (isalpha(peeked)) {
+    } else if (isIdentChar(peeked)) {
         return word();
     } else {
-        assert(false); // TODO fatal
+        // invalid
+        char const * begin = remainder;
+        while (std::isspace(peek())) {
+            get();
+        }
+        char const * end = remainder;
+        return {Token::Kind::Invalid, begin, end};
     }
 }
 
@@ -72,11 +85,16 @@ char Lexer::get() {
     return *(remainder++);
 }
 
+bool Lexer::isIdentChar(char peeked) {
+    // we are OK with idents starting with a digit
+    return isalnum(peeked) || peeked == '_';
+}
+
 Token Lexer::atom(Token::Kind kind, std::string const & exact) {
     char const * begin = remainder;
     assert(std::string_view(begin, exact.length()) == exact);
     remainder += exact.length();
-    return Token(kind, begin, exact.length());
+    return {kind, begin, exact.length()};
 }
 
 Token Lexer::comment() {
@@ -88,27 +106,27 @@ Token Lexer::comment() {
         get();
     }
     char const * end = remainder;
-    return Token(Token::Kind::Comment, begin, end);
+    return {Token::Kind::Comment, begin, end};
 }
 
 Token Lexer::word() {
     char const * begin = remainder;
-    assert(isalpha(peek()));
-    while (isalnum(peek())) {
+    assert(isIdentChar(peek()));
+    while (isIdentChar(peek())) {
         get();
     }
     char const * end = remainder;
     auto word = std::string_view(begin, std::distance(begin, end));
     if (word == "object") {
-        return Token(Token::Kind::Object, begin, end);
+        return {Token::Kind::Object, begin, end};
     } else if (word == "thread") {
-        return Token(Token::Kind::Thread, begin, end);
+        return {Token::Kind::Thread, begin, end};
     } else if (word == "sleep") {
-        return Token(Token::Kind::Sleep, begin, end);
+        return {Token::Kind::Sleep, begin, end};
     } else if (word == "sleepr") {
-        return Token(Token::Kind::Sleepr, begin, end);
+        return {Token::Kind::Sleepr, begin, end};
     } else if (word == "dump") {
-        return Token(Token::Kind::Dump, begin, end);
+        return {Token::Kind::Dump, begin, end};
     }
-    return Token(Token::Kind::Ident, begin, end);
+    return {Token::Kind::Ident, begin, end};
 }
